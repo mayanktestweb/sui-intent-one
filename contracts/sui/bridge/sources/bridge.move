@@ -12,9 +12,10 @@ use sui::table;
 use std::string::String;
 use sui::event;
 use sui::bcs;
-use sui::ecdsa_k1 as ecdsa;
+use sui::ed25519;
 
 use bridge::admin::AdminCap;
+use sui::event::emit;
 
 // Errors
 const ENONCE_USED: u64 = 0;
@@ -33,7 +34,16 @@ public struct BridgeState has key, store {
     burn_nonce: u256
 }
 
+public struct DepsitData has copy, drop {
+    token_address: String,
+    amount: u256,
+    chain_id: String,
+    receiver: address,
+    deposit_nonce: vector<u8>
+}
 
+
+// burn event
 public struct BurnEvent has copy, drop {
     token_address: String,
     amount: u256,
@@ -42,6 +52,13 @@ public struct BurnEvent has copy, drop {
     burn_nonce: u256
 }
 
+// mint event
+public struct MintEvent has copy, drop {
+    token_type: TypeName,
+    amount: u64,
+    receiver: address,
+    deposit_nonce: vector<u8>
+}
 
 fun init(ctx: &mut TxContext) {
 
@@ -80,6 +97,18 @@ public fun register_token<T>(
     state.token_data.add(key, TokenData {chain_id, token_address});
 }
 
+
+/// TODO: unregister token (migration / shutdown)
+public fun unregister_token<T>(
+    _: &mut AdminCap,
+    state: &mut BridgeState
+): TokenVault {
+    let key = type_name::with_defining_ids<T>();
+    let vault = dof::remove<TypeName, TokenVault>(&mut state.id, key);
+    state.token_data.remove(key);
+    vault
+}
+
 /**
 * @dev function to mint bridged token
 * @param amount amount of token to mint
@@ -91,9 +120,7 @@ public fun mint<T> (
     amount: u64,
     receiver: address,
     deposit_nonce: vector<u8>,
-    chain_id: String,
-    token_id: String,
-    signature: vector<u8>,
+    signature: &vector<u8>,
     ctx: &mut TxContext
 ) {
     // Replay protection
@@ -102,23 +129,24 @@ public fun mint<T> (
         ENONCE_USED
     );
 
-    // Rebuild signed message
-    let msg = build_message(
-        receiver,
-        amount,
-        deposit_nonce,
-        chain_id,
-        token_id
-    );
+    let key = type_name::with_defining_ids<T>();
+    let token_data = state.token_data.borrow(key);
+
+    // Build deposit data
+    let deposit_data = DepsitData {
+        token_address: token_data.token_address,
+        amount: amount as u256,
+        chain_id: token_data.chain_id,
+        receiver: receiver,
+        deposit_nonce: deposit_nonce
+    };
+
+    // use bcs to serialize the deposit data
+    let msg = bcs::to_bytes(&deposit_data); 
 
     // Verify relayer signature
     assert!(
-        ecdsa::secp256k1_verify(
-            &signature, 
-            &state.relayer_public_key, 
-            &msg, 
-            1
-        ),
+        ed25519::ed25519_verify(signature, &state.relayer_public_key, &msg),
         EINVALID_SIGNATURE
     );
 
@@ -126,7 +154,6 @@ public fun mint<T> (
     table::add(&mut state.used_nonces, deposit_nonce, true);
 
     // first get the mut ref of vault
-    let key = type_name::with_defining_ids<T>();
     let vault = dof::borrow_mut<TypeName, TokenVault>(&mut state.id, key);
     
     // get the mut ref of treasury cap
@@ -135,6 +162,13 @@ public fun mint<T> (
     // then mint token to receiver
     let tokens = coin::mint(cap, amount, ctx);
     transfer::public_transfer(tokens, receiver);
+
+    emit(MintEvent {
+        token_type: key,
+        amount: amount,
+        receiver: receiver,
+        deposit_nonce: deposit_nonce
+    });
 }
 
 
@@ -165,24 +199,4 @@ public fun burn<T> (
         receiver: receiver,
         burn_nonce
     });
-}
-
-
-// helper functions
-/// Message hashing helper
-fun build_message(
-    receiver: address,
-    amount: u64,
-    deposit_nonce: vector<u8>,
-    chain_id: String,
-    token_id: String
-): vector<u8> {
-    let mut msg = vector::empty<u8>();
-    
-    vector::append(&mut msg, bcs::to_bytes(&amount));
-    vector::append(&mut msg, receiver.to_bytes());
-    vector::append(&mut msg, deposit_nonce);
-    vector::append(&mut msg, *chain_id.as_bytes());
-    vector::append(&mut msg, *token_id.as_bytes());
-    msg
 }

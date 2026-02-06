@@ -1,0 +1,16 @@
+{
+  "name": "relayers",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.3.0",
+    "ethers": "^6.16.0"
+  }
+}
