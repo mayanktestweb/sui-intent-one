@@ -1,0 +1,8 @@
+1 User gets quote with relayer signature 
+
+2 User deposits either native tokens or bridge tokens to IntentTreasury along
+  with relayer signature and intent data.
+
+3 Relayer after this deposit creates the intent on Intent Escrow, and notify solvers
+
+4 solvers compete and fullfill intent 

@@ -1,0 +1,19 @@
+[
+    {
+        "coinId": "0x123::bridge::POLYGON_POL",
+        "name": "Polygon POL",
+        "symbol": "POL",
+        "decimals": 18,
+        "address": "0x0000000000000000000000000000000000000000",
+        "chainId": "80002"
+    },
+
+    {
+        "coinId": "0x123::bridge::BASE_SEPOLIA_NATIVE",
+        "name": "Sepolia BASE",
+        "symbol": "sBASE",
+        "decimals": 18,
+        "address": "0x0000000000000000000000000000000000000000",
+        "chainId": "80003"
+    }
+]
